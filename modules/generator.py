@@ -2,56 +2,16 @@ import typing
 import torch
 from torch import nn
 
-
-class Downsample(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-
-        self.conv = nn.Conv2d(in_channels * 4, out_channels, 1)
-
-    def forward(self, x):
-        x = nn.functional.pixel_unshuffle(x, 2)
-        return self.conv(x)
-
-
-class Upsample(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int):
-        super().__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
-
-    def forward(self, x):
-        x = nn.functional.interpolate(x, scale_factor=2, mode="nearest")
-        return self.conv(x)
-
-
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, groups: int = 8):
-        super().__init__()
-
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, 1, 1, bias=False),
-            nn.GroupNorm(groups, out_channels),
-            nn.SiLU(inplace=True)
-        )
-
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=False),
-            nn.GroupNorm(groups, out_channels),
-            nn.SiLU(inplace=True)
-        )
-
-        self.skip = nn.Conv2d(in_channels, out_channels, 1) if in_channels != out_channels else nn.Identity()
-
-    def forward(self, x):
-        conv1 = self.conv1(x)
-
-        return self.conv2(conv1) + self.skip(x)
+from modules.blocks import ResidualBlock, Downsample, Upsample
 
 
 class UNet(nn.Module):
     def __init__(
             self,
+            in_channels: int = 3,
+            out_channels: int = 3,
             n_features_list: typing.List or typing.Tuple = (64, 128, 256),
+
     ):
         super().__init__()
 
@@ -60,7 +20,7 @@ class UNet(nn.Module):
         self.depth = len(n_features_list)
 
         self.stem = nn.Sequential(
-            nn.Conv2d(3, n_features_list[0], 7, 1, 3, bias=False),
+            nn.Conv2d(in_channels, n_features_list[0], 7, 1, 3, bias=False),
             nn.BatchNorm2d(n_features_list[0]),
             nn.LeakyReLU(inplace=True)
         )
@@ -92,7 +52,7 @@ class UNet(nn.Module):
                 ResidualBlock(out_features, out_features),
             ]))
 
-        self.final_conv = nn.Conv2d(n_features_list[0] * 2, 3, 1)
+        self.final_conv = nn.Conv2d(n_features_list[0] * 2, out_channels, 1)
 
     def forward(self, x):
         stem = self.stem(x)
@@ -130,7 +90,8 @@ if __name__ == '__main__':
         total_params += param.numel()
     print(f"Total params is: {total_params / 1e6}")
 
-    noise = torch.randn(8, 3, 256, 256).cuda()
-    res = unet(noise)
-    print(res.mean())
-    del res
+    for i in range(100):
+        noise = torch.randn(8, 3, 256, 256).cuda()
+        res = unet(noise)
+        print(res.mean())
+        del res
